@@ -1,0 +1,110 @@
+services:
+  db:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: changethis123
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend-network
+  backend:
+    build:
+      context: ./backend
+    container_name: backend
+    restart: always
+    environment:
+      - /backend/.env
+    #    DATABASE_URL: postgresql://app:changethis123@postgres_db:5432/app
+    depends_on:
+      - db
+    networks:
+      - frontend-network
+  frontend:
+    container_name: frontend
+    build:
+      context: ./frontend
+    environment:
+      - /frontend/.env
+    expose:
+      - "5173"
+    depends_on:
+      - backend
+    networks:
+      - frontend-network
+      - backend-network
+  adminer:
+    image: adminer:latest
+    container_name: adminer
+    restart: always
+    expose:
+      - "8080"
+    networks:
+      - backend-network
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DESIGN: galkaev
+
+  nginx:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx
+    restart: always
+    volumes:
+      - data:/data
+      - letsencrypt:/etc/letsencrypt
+      - ./default.conf:/data/nginx/custom/http_top.conf
+    environment:
+      DB_SQLITE_FILE: "/data/database.sqlite"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:81"
+    depends_on:
+      - frontend
+      - backend
+      - adminer
+      - prometheus
+      - grafana
+    networks:
+      - frontend-network
+      - backend-network
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.external-url=/prometheus"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - frontend-network
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - frontend-network
+    volumes:
+      - grafana:/var/lib/grafana
+    environment:
+      - GF_SERVER_ROOT_URL=http://localhost:3000/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+
+networks:
+  frontend-network:
+  backend-network:
+volumes:
+  prometheus.yml:
+  postgres_data:
+  grafana:
+  data:
+  letsencrypt:
